@@ -1,14 +1,20 @@
 package com.kwint.dicer
 
 import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,12 +26,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,15 +42,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kwint.dicer.ui.theme.DicerTheme // Theme name updated
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 // Score list as a constant
 val SCORES = listOf(1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78)
 const val BONUS_SCORE = 10
 const val PENALTY_SCORE = -5
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
+    private var tts: TextToSpeech? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        tts = TextToSpeech(this, this)
+
         setContent {
             // Use the corrected theme name
             DicerTheme {
@@ -50,15 +63,36 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    DiceRollerApp()
+                    DiceRollerApp(speak = { text ->
+                        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                    })
                 }
             }
         }
     }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val result = tts?.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "The Language specified is not supported!")
+            }
+        } else {
+            Log.e("TTS", "Initialization Failed!")
+        }
+    }
+
+    override fun onDestroy() {
+        // Shutdown TTS
+        tts?.stop()
+        tts?.shutdown()
+        super.onDestroy()
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DiceRollerApp(modifier: Modifier = Modifier) {
+fun DiceRollerApp(modifier: Modifier = Modifier, speak: (String) -> Unit) {
     // State for the current dice results
     var results by remember { mutableStateOf(List(6) { 1 }) }
     // State for the grid cells (4 rows, 12 columns), false = not crossed out
@@ -133,27 +167,68 @@ fun DiceRollerApp(modifier: Modifier = Modifier) {
         }
 
 
-        // Place all dice in a single row at the bottom of the screen
+        // Place all dice and reset button in a single row at the bottom of the screen
         Row(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
-                .clickable {
-                    results = List(6) { (1..6).random() }
-                    coroutineScope.launch {
-                        rotation.animateTo(
-                            targetValue = rotation.value + 360f,
-                            animationSpec = tween(durationMillis = 500)
-                        )
-                    }
-                },
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            results.forEachIndexed { index, result ->
-                DiceImageWithRotation(
-                    result = result,
-                    rotationAngle = rotation.value,
-                    color = diceColors[index]
+            Row (
+                modifier = Modifier
+                    .clickable {
+                        val newResults = List(6) { (1..6).random() }
+                        results = newResults
+                        val whiteDiceSum = newResults[0] + newResults[1]
+                        speak(whiteDiceSum.toString())
+                        coroutineScope.launch {
+                            rotation.animateTo(
+                                targetValue = rotation.value + 360f,
+                                animationSpec = tween(durationMillis = 500)
+                            )
+                        }
+                    },
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ){
+                results.forEachIndexed { index, result ->
+                    DiceImageWithRotation(
+                        result = result,
+                        rotationAngle = rotation.value,
+                        color = diceColors[index]
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+
+            val context = LocalContext.current
+            Box(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.small)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .combinedClickable(
+                        onClick = {
+                            Toast
+                                .makeText(context, "Long press to reset", Toast.LENGTH_SHORT)
+                                .show()
+                        },
+                        onLongClick = {
+                            gridState = List(4) { List(12) { false } }
+                            closedRowsState = List(4) { false }
+                            penaltyState = List(4) { false }
+                            // Optionally, reset dice results as well
+                            // results = List(6) {1}
+                            Toast
+                                .makeText(context, "Game Reset!", Toast.LENGTH_SHORT)
+                                .show()
+                        }
+                    )
+                    .padding(ButtonDefaults.ContentPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Reset",
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
@@ -398,6 +473,6 @@ fun DiceImageWithRotation(result: Int, rotationAngle: Float, color: Color) {
 @Composable
 fun DefaultPreview() {
     DicerTheme {
-        DiceRollerApp()
+        DiceRollerApp(speak = {})
     }
 }
