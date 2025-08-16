@@ -2,9 +2,9 @@ name: Android CI Build and Sign
 
 on:
   push:
-    branches: [ main ] # Or your release branch
+    branches: [ master ] # Or your release branch
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   build:
