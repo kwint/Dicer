@@ -106,8 +106,8 @@ fun DiceRollerApp(modifier: Modifier = Modifier) {
                     gridState = newGridState
 
                     // --- Game Logic for Closing a Row ---
-                    val isLastCellInRow = (col == 11)
-                    val isLastCellChecked = newGridState[row][11]
+                    val isLastCellInRow = (col == 10)
+                    val isLastCellChecked = newGridState[row][10]
                     val checkedCountInRow = newGridState[row].count { it }
                     val shouldBeClosed = isLastCellChecked && checkedCountInRow >= 6
 
