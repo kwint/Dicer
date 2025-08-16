@@ -8,6 +8,26 @@ android {
     namespace = "com.kwint.dicer"
     compileSdk = 36
 
+    signingConfigs {
+        create("release") {
+            // These environment variables will be set in your CI/CD environment (e.g., GitHub Actions Secrets)
+            val storeFileEnv = System.getenv("SIGNING_KEY_STORE_FILE")
+            if (storeFileEnv != null) {
+                val keystoreFile = file(storeFileEnv)
+                if (keystoreFile.exists()) {
+                    storeFile = keystoreFile // Corrected line
+                    storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                    keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                    keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+                } else {
+                    println("Signing keystore file not found at path specified by SIGNING_KEY_STORE_FILE: $storeFileEnv. Release build may not be signed.")
+                }
+            } else {
+                println("SIGNING_KEY_STORE_FILE environment variable not set. Release build may not be signed.")
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.kwint.dicer"
         minSdk = 24
@@ -25,6 +45,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Reference the signing config here
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {

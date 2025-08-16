@@ -1,0 +1,47 @@
+name: Android CI Build and Sign
+
+on:
+  push:
+    branches: [ main ] # Or your release branch
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11' # Match your project's Java version
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant Gradlew executable permissions
+        run: chmod +x ./gradlew
+
+      - name: Decode Keystore
+        env:
+          SIGNING_KEY_STORE_BASE64: ${{ secrets.SIGNING_KEY_STORE_BASE64 }}
+          KEYSTORE_PATH: ${{ github.workspace }}/app/my-release-key.jks
+        run: |
+          echo "Decoding keystore to $KEYSTORE_PATH"
+          echo $SIGNING_KEY_STORE_BASE64 | base64 --decode > $KEYSTORE_PATH
+          echo "SIGNING_KEY_STORE_FILE=$KEYSTORE_PATH" >> $GITHUB_ENV
+          echo "SIGNING_STORE_PASSWORD=${{ secrets.SIGNING_STORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "SIGNING_KEY_ALIAS=${{ secrets.SIGNING_KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "SIGNING_KEY_PASSWORD=${{ secrets.SIGNING_KEY_PASSWORD }}" >> $GITHUB_ENV
+
+      - name: Build and Sign Release APK
+        run: ./gradlew assembleRelease
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-signed
+          path: app/build/outputs/apk/release/app-release.apk # Gradle typically names the signed APK app-release.apk
+          if-no-files-found: error
+          retention-days: 7
